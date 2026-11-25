@@ -77,6 +77,9 @@
         <button data-filter="life" class="filter-btn px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all text-slate-400 hover:text-white hover:bg-slate-800">
           生活・実用
         </button>
+        <button data-filter="img" class="filter-btn px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all text-slate-400 hover:text-white hover:bg-slate-800">
+          SVG・PNG・JPEG
+        </button>
       </div>
 
       <!-- リアルタイム検索窓 -->
@@ -307,6 +310,31 @@
         </div>
         <div class="mt-4 pt-3 border-t border-slate-800/60 flex items-center gap-1.5 relative z-10">
           <span class="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 font-medium">数値・変換</span>
+        </div>
+      </a>
+      <a href="./program/img/svg-base.html" data-category="img" class="tool-card bg-slate-900/90 backdrop-blur-sm border border-slate-800 hover:border-amber-500/60 hover:-translate-y-1 rounded-2xl p-5 transition-all duration-300 shadow-lg hover:shadow-amber-500/15 group flex flex-col justify-between relative overflow-hidden">
+        <div class="absolute top-0 right-0 bg-amber-500 text-slate-950 text-[9px] font-black px-2.5 py-0.5 rounded-bl-lg">NEW</div>
+        <div class="absolute -right-6 -top-6 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-all pointer-events-none"></div>
+
+        <div class="relative z-10">
+          <div class="flex items-center justify-between mb-3 pr-6">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/25 to-purple-500/10 border border-amber-500/40 flex items-center justify-center text-amber-400 group-hover:scale-110 transition shrink-0 shadow-inner">
+                <i data-lucide="image-plus" class="w-5 h-5"></i>
+              </div>
+              <div class="min-w-0">
+                <h2 class="text-sm font-bold text-white group-hover:text-amber-400 transition truncate">PNGからSVG</h2>
+                <span class="text-[10px] text-slate-400 font-mono block truncate">number/calc/calc.html</span>
+              </div>
+            </div>
+            <i data-lucide="arrow-up-right" class="w-4 h-4 text-slate-600 group-hover:text-amber-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0"></i>
+          </div>
+          <p class="text-xs text-slate-400 leading-relaxed group-hover:text-slate-300 transition">
+           PNGを直感的にSVGにするツールだべさ！
+          </p>
+        </div>
+        <div class="mt-4 pt-3 border-t border-slate-800/60 flex items-center gap-1.5 relative z-10">
+          <span class="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 font-medium">SVG・PNG・JPEG</span>
         </div>
       </a>
     </div>
