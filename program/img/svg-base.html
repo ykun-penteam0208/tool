@@ -264,11 +264,11 @@
       </div>
 
       <div class="flex items-center gap-2 sm:gap-3">
-        <!-- ../../../index.html へ戻るボタン -->
+        <!-- ../../index.html へ戻るボタン -->
         <a
-          href="../../../index.html"
+          href="../../index.html"
           class="px-3 py-2 text-xs sm:text-sm font-medium rounded-xl border border-slate-700 bg-slate-900/90 hover:bg-slate-800 text-slate-200 transition flex items-center gap-1.5 shadow-2xs"
-          title="../../../index.html に戻る"
+          title="../../index.html に戻る"
         >
           <i data-lucide="arrow-left" class="w-4 h-4 text-indigo-400"></i>
           <span>戻る</span>
@@ -761,6 +761,11 @@
     // 状態管理
     // =========================================================================
     const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+    const STORAGE_KEYS = {
+      theme: 'svg_studio_theme',
+      imageSession: 'svg_studio_saved_image_v1',
+    };
+    const MAX_STORAGE_IMAGE_CHARS = 2_500_000; // localStorage容量保護用（約2.5MB相当のDataURL長）
 
     const appState = {
       originalImage: null,       // HTMLImageElement
@@ -845,15 +850,127 @@
     };
 
     // =========================================================================
-    // ユーティリティ関数
+    // テーマ管理（ローカルストレージ連携）
     // =========================================================================
-    function refreshIcons() {
+    function initTheme() {
       try {
-        if (window.lucide && typeof window.lucide.createIcons === 'function') {
-          window.lucide.createIcons();
-        }
+        const saved = localStorage.getItem(STORAGE_KEYS.theme);
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const isDark = saved ? saved === 'dark' : prefersDark;
+        applyTheme(isDark, false);
+      } catch {
+        applyTheme(true, false);
+      }
+    }
+
+    function applyTheme(isDark, notifyStorageError = true) {
+      dom.html.classList.toggle('dark', isDark);
+      if (dom.sunIcon) dom.sunIcon.classList.toggle('hidden', !isDark);
+      if (dom.moonIcon) dom.moonIcon.classList.toggle('hidden', isDark);
+      try {
+        localStorage.setItem(STORAGE_KEYS.theme, isDark ? 'dark' : 'light');
       } catch (err) {
-        console.warn('Lucideアイコン描画時の警告:', err);
+        console.warn('テーマのローカルストレージ保存に失敗:', err);
+        if (notifyStorageError) {
+          showBanner('ブラウザのストレージ制限によりテーマ設定を保存できませんでした。', 'info');
+        }
+      }
+    }
+
+    // =========================================================================
+    // 画像のローカルストレージ永続化＆復元
+    // =========================================================================
+    function saveImageToLocalStorage() {
+      if (!appState.preparedDataUrl) return false;
+
+      if (appState.preparedDataUrl.length > MAX_STORAGE_IMAGE_CHARS) {
+        console.info('画像データが大きいためローカルストレージ保存をスキップしました。');
+        return false;
+      }
+
+      try {
+        const payload = {
+          dataUrl: appState.preparedDataUrl,
+          fileName: appState.originalFileName,
+          originalWidth: appState.originalWidth,
+          originalHeight: appState.originalHeight,
+          preparedWidth: appState.preparedWidth,
+          preparedHeight: appState.preparedHeight,
+          savedAt: Date.now(),
+        };
+        localStorage.setItem(STORAGE_KEYS.imageSession, JSON.stringify(payload));
+        return true;
+      } catch (err) {
+        console.warn('画像のローカルストレージ保存に失敗:', err);
+        return false;
+      }
+    }
+
+    function applyLoadedImageData(dataUrl, meta = {}, options = {}) {
+      const { persist = true, notifyBanner = false } = options;
+
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          appState.originalImage = img;
+          appState.originalFileName = sanitizeFileName(meta.fileName || 'traced-image');
+          appState.originalWidth = meta.originalWidth || img.naturalWidth || img.width;
+          appState.originalHeight = meta.originalHeight || img.naturalHeight || img.height;
+
+          prepareSourceImage(dataUrl, meta.preparedWidth, meta.preparedHeight);
+          updateOriginalPreview();
+
+          if (persist) {
+            saveImageToLocalStorage();
+          }
+
+          scheduleConversion(50);
+
+          if (notifyBanner) {
+            showBanner(notifyBanner.message, notifyBanner.type || 'info');
+          }
+          resolve();
+        };
+        img.onerror = (err) => {
+          reject(err);
+        };
+        img.src = dataUrl;
+      });
+    }
+
+    function restoreImageFromLocalStorage() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEYS.imageSession);
+        if (!raw) return;
+
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed.dataUrl !== 'string' || !parsed.dataUrl.startsWith('data:image/')) {
+          localStorage.removeItem(STORAGE_KEYS.imageSession);
+          return;
+        }
+
+        applyLoadedImageData(
+          parsed.dataUrl,
+          {
+            fileName: parsed.fileName,
+            originalWidth: parsed.originalWidth,
+            originalHeight: parsed.originalHeight,
+            preparedWidth: parsed.preparedWidth,
+            preparedHeight: parsed.preparedHeight,
+          },
+          {
+            persist: false,
+            notifyBanner: {
+              message: `前回の画像「${sanitizeFileName(parsed.fileName)}」をローカルストレージから復元しました。`,
+              type: 'info',
+            },
+          }
+        ).catch((err) => {
+          console.warn('保存済み画像の復元に失敗:', err);
+          localStorage.removeItem(STORAGE_KEYS.imageSession);
+        });
+      } catch (err) {
+        console.warn('ローカルストレージ画像データの読み込みに失敗:', err);
       }
     }
 
@@ -1149,26 +1266,130 @@
 
       const reader = new FileReader();
       reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-          appState.originalImage = img;
-          appState.originalFileName = sanitizeFileName(file.name);
-          appState.originalWidth = img.naturalWidth || img.width;
-          appState.originalHeight = img.naturalHeight || img.height;
-
-          prepareSourceImage();
-          updateOriginalPreview();
-          scheduleConversion(50);
-        };
-        img.onerror = () => {
+        applyLoadedImageData(
+          event.target.result,
+          { fileName: file.name },
+          { persist: true }
+        ).catch(() => {
           showBanner('画像の読み込みに失敗しました。破損していない画像ファイルをお試しください。', 'error');
-        };
-        img.src = event.target.result;
+        });
       };
       reader.onerror = () => {
         showBanner('ファイルの読み込み中にエラーが発生しました。', 'error');
       };
       reader.readAsDataURL(file);
+    }
+
+    function prepareSourceImage(overrideDataUrl = null, fallbackW = null, fallbackH = null) {
+      const img = appState.originalImage;
+      if (!img) return;
+
+      const maxDim = Number(dom.maxDimensionSelect.value) || 0;
+      let targetW = appState.originalWidth || fallbackW || img.naturalWidth || img.width;
+      let targetH = appState.originalHeight || fallbackH || img.naturalHeight || img.height;
+
+      if (maxDim > 0 && Math.max(targetW, targetH) > maxDim) {
+        if (targetW >= targetH) {
+          targetH = Math.round((targetH * maxDim) / targetW);
+          targetW = maxDim;
+        } else {
+          targetW = Math.round((targetW * maxDim) / targetH);
+          targetH = maxDim;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = targetW;
+      canvas.height = targetH;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, targetW, targetH);
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+
+      appState.preparedWidth = targetW;
+      appState.preparedHeight = targetH;
+      appState.preparedDataUrl = overrideDataUrl && maxDim === 0
+        ? overrideDataUrl
+        : canvas.toDataURL('image/png');
+
+      dom.sourceMetaBadge.textContent = `${appState.originalFileName} (${appState.originalWidth}×${appState.originalHeight})`;
+      dom.originalDimsLabel.textContent =
+        targetW !== appState.originalWidth
+          ? `${appState.originalWidth}×${appState.originalHeight} → ${targetW}×${targetH}`
+          : `${targetW}×${targetH}`;
+    }
+
+    function updateOriginalPreview() {
+      if (!appState.preparedDataUrl) return;
+
+      dom.originalPreviewImg.src = appState.preparedDataUrl;
+      dom.originalPreviewImg.classList.remove('hidden');
+      dom.originalEmptyState.classList.add('hidden');
+
+      dom.compareOriginalImg.src = appState.preparedDataUrl;
+    }
+
+    // 内蔵サンプル画像（幾何学ロゴ＋グラデーション円）をCanvasで生成
+    function loadSampleImage() {
+      hideBanner();
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 480;
+      canvas.height = 360;
+      const ctx = canvas.getContext('2d');
+
+      // 背景グラデーション
+      const bgGrad = ctx.createLinearGradient(0, 0, 480, 360);
+      bgGrad.addColorStop(0, '#eef2ff');
+      bgGrad.addColorStop(1, '#e0e7ff');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, 480, 360);
+
+      // 大きな円
+      ctx.beginPath();
+      ctx.arc(175, 180, 95, 0, Math.PI * 2);
+      ctx.fillStyle = '#4f46e5';
+      ctx.fill();
+
+      // 重なるアクセント円
+      ctx.beginPath();
+      ctx.arc(275, 180, 75, 0, Math.PI * 2);
+      ctx.fillStyle = '#06b6d4';
+      ctx.fill();
+
+      // 三角形バッジ
+      ctx.beginPath();
+      ctx.moveTo(235, 82);
+      ctx.lineTo(315, 225);
+      ctx.lineTo(155, 225);
+      ctx.closePath();
+      ctx.fillStyle = '#f59e0b';
+      ctx.fill();
+
+      // 中心の白円
+      ctx.beginPath();
+      ctx.arc(235, 178, 28, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+
+      const dataUrl = canvas.toDataURL('image/png');
+      applyLoadedImageData(
+        dataUrl,
+        {
+          fileName: 'sample-geometric-badge',
+          originalWidth: 480,
+          originalHeight: 360,
+        },
+        {
+          persist: true,
+          notifyBanner: {
+            message: 'サンプル画像を読み込み、SVGへ変換しました（ローカルストレージにも保存）。',
+            type: 'info',
+          },
+        }
+      ).catch((err) => {
+        console.error('サンプル画像読み込みエラー:', err);
+        showBanner('サンプル画像の読み込みに失敗しました。', 'error');
+      });
     }
 
     function prepareSourceImage() {
@@ -1454,6 +1675,16 @@
       dom.toggleWrapBtn.textContent = `折り返し: ${isWrapped ? 'ON' : 'OFF'}`;
     }
 
+    function refreshIcons() {
+      try {
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+          window.lucide.createIcons();
+        }
+      } catch (err) {
+        console.warn('Lucideアイコンの描画更新に失敗:', err);
+      }
+    }
+
     // =========================================================================
     // イベントリスナー登録
     // =========================================================================
@@ -1524,12 +1755,12 @@
           advanceTourIfActive(1, 550);
         }
       });
-
-      // 最大サイズ変更時は元画像を再準備
+      // 最大サイズ変更時は元画像を再準備＆ストレージ更新
       on(dom.maxDimensionSelect, 'change', () => {
         if (!appState.originalImage) return;
         prepareSourceImage();
         updateOriginalPreview();
+        saveImageToLocalStorage();
         scheduleConversion(60);
       });
 
@@ -1651,6 +1882,7 @@
       updateCompareSplit(50);
       bindEvents();
       refreshIcons();
+      restoreImageFromLocalStorage();
     }
 
     if (document.readyState === 'loading') {
