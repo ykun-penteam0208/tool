@@ -1,0 +1,1663 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ImageTracer SVG Studio - 画像からSVG変換ツール</title>
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- ImageTracer.js -->
+  <script src="https://cdn.jsdelivr.net/npm/imagetracerjs@1.2.6/imagetracer_v1.2.6.min.js"></script>
+
+  <!-- Driver.js (Guided Interactive Tour) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.css" />
+  <script src="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.js.iife.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    /* 透過チェッカーボード背景（画像・SVGプレビュー用） */
+    .checkerboard {
+      background-color: #f8fafc;
+      background-image:
+        linear-gradient(45deg, #e2e8f0 25%, transparent 25%),
+        linear-gradient(-45deg, #e2e8f0 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #e2e8f0 75%),
+        linear-gradient(-45deg, transparent 75%, #e2e8f0 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    }
+
+    .dark .checkerboard {
+      background-color: #0f172a;
+      background-image:
+        linear-gradient(45deg, #1e293b 25%, transparent 25%),
+        linear-gradient(-45deg, #1e293b 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #1e293b 75%),
+        linear-gradient(-45deg, transparent 75%, #1e293b 75%);
+    }
+
+    /* 黒い方眼（グラフ用紙）背景 */
+    .black-grid-bg {
+      background-color: #050507;
+      background-image:
+        linear-gradient(to right, rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+        linear-gradient(to right, rgba(129, 140, 248, 0.14) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(129, 140, 248, 0.14) 1px, transparent 1px);
+      background-size: 20px 20px, 20px 20px, 100px 100px, 100px 100px;
+      background-attachment: fixed;
+    }
+
+    /* Driver.js かっこいいネオン＆グラスモーフィズムポップアップ装飾 */
+    .driver-popover.svg-studio-tour-popover {
+      background: linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(30, 27, 75, 0.96));
+      color: #f8fafc;
+      border: 1px solid rgba(129, 140, 248, 0.45);
+      border-radius: 18px;
+      box-shadow:
+        0 20px 45px -12px rgba(2, 6, 23, 0.85),
+        0 0 0 1px rgba(99, 102, 241, 0.2),
+        0 0 28px rgba(99, 102, 241, 0.22);
+      backdrop-filter: blur(14px);
+      padding: 18px 20px;
+      max-width: 360px;
+    }
+
+    .driver-popover.svg-studio-tour-popover .driver-popover-title {
+      font-family: "Inter", "Noto Sans JP", sans-serif;
+      font-size: 0.98rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: #ffffff;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .driver-popover.svg-studio-tour-popover .driver-popover-description {
+      font-family: "Inter", "Noto Sans JP", sans-serif;
+      font-size: 0.82rem;
+      line-height: 1.65;
+      color: #cbd5e1;
+    }
+
+    .driver-popover.svg-studio-tour-popover .driver-popover-progress-text {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.72rem;
+      color: #a5b4fc;
+      font-weight: 600;
+    }
+
+    .driver-popover.svg-studio-tour-popover .driver-popover-footer {
+      margin-top: 14px;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .driver-popover.svg-studio-tour-popover .driver-popover-prev-btn,
+    .driver-popover.svg-studio-tour-popover .driver-popover-next-btn,
+    .driver-popover.svg-studio-tour-popover .driver-popover-close-btn {
+      font-family: "Inter", "Noto Sans JP", sans-serif;
+      border-radius: 10px;
+      font-size: 0.76rem;
+      font-weight: 600;
+      text-shadow: none;
+      transition: all 0.18s ease;
+    }
+
+    .driver-popover.svg-studio-tour-popover .driver-popover-prev-btn {
+      background: rgba(30, 41, 59, 0.9);
+      color: #e2e8f0;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      padding: 6px 12px;
+    }
+
+    .driver-popover.svg-studio-tour-popover .driver-popover-prev-btn:hover {
+      background: rgba(51, 65, 85, 0.95);
+      border-color: rgba(165, 180, 252, 0.5);
+    }
+
+    .driver-popover.svg-studio-tour-popover .driver-popover-next-btn {
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      color: #ffffff;
+      border: 1px solid rgba(199, 210, 254, 0.35);
+      padding: 6px 14px;
+      box-shadow: 0 6px 18px rgba(79, 70, 229, 0.45);
+    }
+
+    .driver-popover.svg-studio-tour-popover .driver-popover-next-btn:hover {
+      background: linear-gradient(135deg, #818cf8, #6366f1);
+      transform: translateY(-1px);
+    }
+
+    .driver-popover.svg-studio-tour-popover .driver-popover-close-btn {
+      color: #94a3b8;
+      width: 24px;
+      height: 24px;
+    }
+
+    .driver-popover.svg-studio-tour-popover .driver-popover-close-btn:hover {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .driver-popover.svg-studio-tour-popover .driver-popover-arrow-side-left.driver-popover-arrow {
+      border-left-color: rgba(30, 27, 75, 0.96);
+    }
+    .driver-popover.svg-studio-tour-popover .driver-popover-arrow-side-right.driver-popover-arrow {
+      border-right-color: rgba(15, 23, 42, 0.96);
+    }
+    .driver-popover.svg-studio-tour-popover .driver-popover-arrow-side-top.driver-popover-arrow {
+      border-top-color: rgba(30, 27, 75, 0.96);
+    }
+    .driver-popover.svg-studio-tour-popover .driver-popover-arrow-side-bottom.driver-popover-arrow {
+      border-bottom-color: rgba(15, 23, 42, 0.96);
+    }
+
+    /* 生成されたSVGをコンテナ内にフィットさせる */
+    #svgPreviewContainer svg {
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      display: block;
+    }
+
+    /* カスタムレンジスライダー */
+    input[type="range"].studio-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    input[type="range"].studio-slider::-webkit-slider-runnable-track {
+      height: 6px;
+      border-radius: 9999px;
+      background: #e2e8f0;
+    }
+
+    .dark input[type="range"].studio-slider::-webkit-slider-runnable-track {
+      background: #334155;
+    }
+
+    input[type="range"].studio-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 9999px;
+      background: #4f46e5;
+      border: 2px solid #ffffff;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+      margin-top: -5px;
+      transition: transform 0.12s ease, background-color 0.12s ease;
+    }
+
+    input[type="range"].studio-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.12);
+      background: #4338ca;
+    }
+  </style>
+</head>
+
+<body class="black-grid-bg text-slate-900 dark:text-slate-100 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+  <!-- トップヘッダー -->
+  <header class="sticky top-0 z-30 backdrop-blur-md bg-slate-950/85 border-b border-slate-800/80">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-sm shrink-0">
+          <!-- インラインSVGアイコン（常に確実に表示） -->
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="w-5 h-5"
+            aria-hidden="true"
+          >
+            <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" />
+            <circle cx="12" cy="12" r="2.5" />
+            <path d="M12 3v6.5" />
+            <path d="M20 7.5l-5.8 3.2" />
+            <path d="M4 7.5l5.8 3.2" />
+          </svg>
+        </div>
+        <div class="truncate">
+          <h1 class="text-base sm:text-lg font-bold tracking-tight truncate text-white">
+            ImageTracer SVG Studio
+          </h1>
+          <p class="text-xs text-slate-400 hidden sm:block">
+            ラスタ画像（PNG / JPG / WebP）をブラウザ上でSVGベクターに変換
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 sm:gap-3">
+        <!-- ../../../index.html へ戻るボタン -->
+        <a
+          href="../../../index.html"
+          class="px-3 py-2 text-xs sm:text-sm font-medium rounded-xl border border-slate-700 bg-slate-900/90 hover:bg-slate-800 text-slate-200 transition flex items-center gap-1.5 shadow-2xs"
+          title="../../../index.html に戻る"
+        >
+          <i data-lucide="arrow-left" class="w-4 h-4 text-indigo-400"></i>
+          <span>戻る</span>
+        </a>
+
+        <!-- ガイドツアー起動ボタン -->
+        <button
+          id="startTourBtn"
+          type="button"
+          class="px-3 py-2 text-xs sm:text-sm font-medium rounded-xl border border-indigo-400/40 bg-indigo-950/70 hover:bg-indigo-900/80 text-indigo-200 transition flex items-center gap-1.5 shadow-2xs"
+          title="操作ガイドツアーを開始する"
+        >
+          <i data-lucide="compass" class="w-4 h-4 text-indigo-400"></i>
+          <span>ガイドツアー</span>
+        </button>
+
+        <!-- サンプル画像読み込みボタン -->
+        <button
+          id="loadSampleBtn"
+          type="button"
+          class="px-3 py-2 text-xs sm:text-sm font-medium rounded-xl border border-slate-700 bg-slate-900/90 hover:bg-slate-800 text-slate-200 transition flex items-center gap-1.5 shadow-2xs"
+          title="内蔵サンプル画像で試す"
+        >
+          <i data-lucide="sparkles" class="w-4 h-4 text-indigo-400"></i>
+          <span>サンプル読込</span>
+        </button>
+
+        <!-- ライト/ダークテーマ切替 -->
+        <button
+          id="themeToggleBtn"
+          type="button"
+          class="p-2 rounded-xl border border-slate-700 bg-slate-900/90 hover:bg-slate-800 text-slate-300 transition shadow-2xs"
+          aria-label="テーマ切替"
+          title="ライト / ダークテーマ切替"
+        >
+          <i data-lucide="sun" id="sunIcon" class="w-4 h-4 hidden"></i>
+          <i data-lucide="moon" id="moonIcon" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ステータス / エラー通知バナー -->
+  <div id="statusBanner" class="hidden max-w-7xl w-full mx-auto px-4 sm:px-6 pt-4">
+    <div id="statusBannerInner" class="rounded-xl px-4 py-3 text-sm flex items-center justify-between gap-3 border">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <i id="statusBannerIcon" data-lucide="info" class="w-4 h-4 shrink-0"></i>
+        <span id="statusBannerText" class="truncate"></span>
+      </div>
+      <button
+        id="statusBannerClose"
+        type="button"
+        class="p-1 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition shrink-0"
+        aria-label="閉じる"
+      >
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- メインコンテンツ（左：アップロード＆設定パネル / 右：プレビュー＆SVGコード） -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+    <!-- 左カラム：入力＆トレース設定（5/12） -->
+    <section class="lg:col-span-5 space-y-5">
+      <!-- 画像アップロードカード -->
+      <div class="bg-white/95 dark:bg-slate-900/90 backdrop-blur-xs rounded-2xl border border-slate-200/90 dark:border-slate-800 p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold flex items-center gap-2">
+            <i data-lucide="image-plus" class="w-4 h-4 text-indigo-500"></i>
+            元画像のアップロード
+          </h2>
+          <span id="sourceMetaBadge" class="text-xs font-mono text-slate-500 dark:text-slate-400">
+            未選択
+          </span>
+        </div>
+
+        <!-- ドロップゾーン -->
+        <div
+          id="dropZone"
+          tabindex="0"
+          role="button"
+          aria-label="画像をドラッグ＆ドロップまたはクリックして選択"
+          class="group relative border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-400 rounded-xl p-6 text-center cursor-pointer transition bg-slate-50/70 dark:bg-slate-950/50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        >
+          <input
+            id="fileInput"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            class="sr-only"
+          />
+          <div class="w-11 h-11 rounded-full bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto mb-3 group-hover:scale-105 transition">
+            <i data-lucide="upload-cloud" class="w-5 h-5"></i>
+          </div>
+          <p class="text-sm font-medium text-slate-700 dark:text-slate-200">
+            ここに画像をドラッグ＆ドロップ
+          </p>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            またはクリックしてファイルを選択（PNG, JPG, WebP / 最大10MB）
+          </p>
+        </div>
+
+        <!-- 大きな画像向けの最大辺リサイズ設定 -->
+        <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
+          <label for="maxDimensionSelect" class="text-xs font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+            <i data-lucide="maximize-2" class="w-3.5 h-3.5 text-slate-400"></i>
+            変換時の最大サイズ（高速化）
+          </label>
+          <select
+            id="maxDimensionSelect"
+            class="text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="512">512px（超高速）</option>
+            <option value="800" selected>800px（推奨）</option>
+            <option value="1200">1200px（高精細）</option>
+            <option value="0">元サイズ維持</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- トレースパラメータ設定カード -->
+      <div class="bg-white/95 dark:bg-slate-900/90 backdrop-blur-xs rounded-2xl border border-slate-200/90 dark:border-slate-800 p-5 shadow-sm space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold flex items-center gap-2">
+            <i data-lucide="sliders-horizontal" class="w-4 h-4 text-indigo-500"></i>
+            SVGトレース設定
+          </h2>
+          <button
+            id="resetParamsBtn"
+            type="button"
+            class="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+          >
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+            リセット
+          </button>
+        </div>
+
+        <!-- プリセット選択 -->
+        <div>
+          <label for="presetSelect" class="block text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5">
+            プリセット
+          </label>
+          <select
+            id="presetSelect"
+            class="w-full text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="default" selected>標準（バランス重視）</option>
+            <option value="posterized1">ポスター調 1（くっきり少色数）</option>
+            <option value="posterized2">ポスター調 2（中色数・鮮やか）</option>
+            <option value="curvy">滑らかな曲線（ロゴ・イラスト向き）</option>
+            <option value="sharp">シャープな直線・角（幾何学図形向き）</option>
+            <option value="bw">白黒2値（モノクロ・アイコン向き）</option>
+            <option value="detailed">高精細トレース（細部まで描画）</option>
+          </select>
+        </div>
+
+        <!-- 色数（numberofcolors） -->
+        <div>
+          <div class="flex items-center justify-between text-xs mb-1.5">
+            <label for="colorsRange" class="font-medium text-slate-600 dark:text-slate-300">
+              減色数（色数）
+            </label>
+            <span id="colorsValue" class="font-mono font-semibold text-indigo-600 dark:text-indigo-400">16</span>
+          </div>
+          <input
+            id="colorsRange"
+            type="range"
+            min="2"
+            max="64"
+            step="1"
+            value="16"
+            class="w-full studio-slider"
+          />
+          <div class="flex justify-between text-[11px] text-slate-400 mt-0.5">
+            <span>2色（シンプル）</span>
+            <span>64色（豊か）</span>
+          </div>
+        </div>
+
+        <!-- パス簡略化・ディテール（ltres / qtres 連動） -->
+        <div>
+          <div class="flex items-center justify-between text-xs mb-1.5">
+            <label for="detailRange" class="font-medium text-slate-600 dark:text-slate-300">
+              トレース詳細度（輪郭の細かさ）
+            </label>
+            <span id="detailValue" class="font-mono font-semibold text-indigo-600 dark:text-indigo-400">標準</span>
+          </div>
+          <input
+            id="detailRange"
+            type="range"
+            min="1"
+            max="10"
+            step="1"
+            value="5"
+            class="w-full studio-slider"
+          />
+          <div class="flex justify-between text-[11px] text-slate-400 mt-0.5">
+            <span>粗い（軽量SVG）</span>
+            <span>細かい（高精細）</span>
+          </div>
+        </div>
+
+        <!-- 最小パス面積（pathomit） -->
+        <div>
+          <div class="flex items-center justify-between text-xs mb-1.5">
+            <label for="pathomitRange" class="font-medium text-slate-600 dark:text-slate-300">
+              ノイズ除去（最小パス面積）
+            </label>
+            <span id="pathomitValue" class="font-mono font-semibold text-indigo-600 dark:text-indigo-400">8 px²</span>
+          </div>
+          <input
+            id="pathomitRange"
+            type="range"
+            min="0"
+            max="64"
+            step="1"
+            value="8"
+            class="w-full studio-slider"
+          />
+        </div>
+
+        <!-- 小数点桁数（roundcoords） -->
+        <div>
+          <div class="flex items-center justify-between text-xs mb-1.5">
+            <label for="roundcoordsRange" class="font-medium text-slate-600 dark:text-slate-300">
+              座標の丸め桁数（ファイルサイズ調整）
+            </label>
+            <span id="roundcoordsValue" class="font-mono font-semibold text-indigo-600 dark:text-indigo-400">1 桁</span>
+          </div>
+          <input
+            id="roundcoordsRange"
+            type="range"
+            min="0"
+            max="3"
+            step="1"
+            value="1"
+            class="w-full studio-slider"
+          />
+        </div>
+
+        <!-- ストローク幅（strokewidth） -->
+        <div>
+          <div class="flex items-center justify-between text-xs mb-1.5">
+            <label for="strokewidthRange" class="font-medium text-slate-600 dark:text-slate-300">
+              輪郭線の太さ（strokewidth）
+            </label>
+            <span id="strokewidthValue" class="font-mono font-semibold text-indigo-600 dark:text-indigo-400">0.5</span>
+          </div>
+          <input
+            id="strokewidthRange"
+            type="range"
+            min="0"
+            max="5"
+            step="0.5"
+            value="0.5"
+            class="w-full studio-slider"
+          />
+        </div>
+
+        <!-- 自動変換トグル＆手動変換ボタン -->
+        <div class="pt-2 flex items-center justify-between gap-3">
+          <label class="inline-flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+            <input
+              id="autoConvertCheckbox"
+              type="checkbox"
+              checked
+              class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            変更時に自動変換
+          </label>
+
+          <button
+            id="convertNowBtn"
+            type="button"
+            class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs sm:text-sm font-semibold shadow-sm transition flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <i data-lucide="wand-2" class="w-4 h-4"></i>
+            <span id="convertBtnLabel">SVGに変換</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 右カラム：プレビュー比較＆SVGソースコード（7/12） -->
+    <section class="lg:col-span-7 space-y-5">
+      <!-- プレビューカード -->
+      <div class="bg-white/95 dark:bg-slate-900/90 backdrop-blur-xs rounded-2xl border border-slate-200/90 dark:border-slate-800 p-5 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-semibold flex items-center gap-2">
+              <i data-lucide="eye" class="w-4 h-4 text-indigo-500"></i>
+              プレビュー比較
+            </h2>
+            <span
+              id="conversionStatusBadge"
+              class="text-xs px-2.5 py-0.5 rounded-full font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+            >
+              待機中
+            </span>
+          </div>
+
+          <!-- 表示モード切替 -->
+          <div class="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 text-xs font-medium">
+            <button
+              type="button"
+              data-view-mode="side-by-side"
+              id="viewSideBySide"
+              class="view-mode-btn px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs transition"
+            >
+              並べて比較
+            </button>
+            <button
+              type="button"
+              data-view-mode="slider"
+              id="viewSlider"
+              class="view-mode-btn px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition"
+            >
+              重ねて比較
+            </button>
+            <button
+              type="button"
+              data-view-mode="svg-only"
+              id="viewSvgOnly"
+              class="view-mode-btn px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition"
+            >
+              SVG拡大
+            </button>
+          </div>
+        </div>
+
+        <!-- モード1: 並べて比較 -->
+        <div id="sideBySideView" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-1">
+              <span class="font-medium">元画像（Raster）</span>
+              <span id="originalDimsLabel" class="font-mono">-</span>
+            </div>
+            <div class="checkerboard rounded-xl border border-slate-200 dark:border-slate-800 h-72 sm:h-80 flex items-center justify-center p-3 overflow-hidden relative">
+              <img
+                id="originalPreviewImg"
+                alt="元画像プレビュー"
+                class="max-w-full max-h-full object-contain hidden rounded-sm"
+              />
+              <div id="originalEmptyState" class="text-center text-slate-400 dark:text-slate-500 text-xs">
+                <i data-lucide="image" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+                <p>画像が読み込まれていません</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-1">
+              <span class="font-medium">変換後（SVG Vector）</span>
+              <span id="svgSizeLabel" class="font-mono">-</span>
+            </div>
+            <div class="checkerboard rounded-xl border border-slate-200 dark:border-slate-800 h-72 sm:h-80 flex items-center justify-center p-3 overflow-hidden relative">
+              <div id="svgPreviewContainer" class="w-full h-full flex items-center justify-center"></div>
+              <div id="svgEmptyState" class="text-center text-slate-400 dark:text-slate-500 text-xs">
+                <i data-lucide="file-code-2" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+                <p>SVGがここに表示されます</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- モード2: 重ねて比較（クリッピングスライダー） -->
+        <div id="sliderCompareView" class="hidden space-y-3">
+          <div
+            id="compareStage"
+            class="checkerboard relative rounded-xl border border-slate-200 dark:border-slate-800 h-80 sm:h-96 overflow-hidden select-none flex items-center justify-center"
+          >
+            <!-- 背景側：SVG -->
+            <div id="compareSvgLayer" class="w-full h-full flex items-center justify-center p-4 pointer-events-none"></div>
+
+            <!-- 前景側：元画像（clip-pathで左右分割） -->
+            <div
+              id="compareOriginalLayer"
+              class="absolute inset-0 w-full h-full flex items-center justify-center p-4 pointer-events-none"
+              style="clip-path: inset(0 50% 0 0);"
+            >
+              <img
+                id="compareOriginalImg"
+                alt="比較用元画像"
+                class="max-w-full max-h-full object-contain"
+              />
+            </div>
+
+            <!-- 仕切りライン -->
+            <div
+              id="compareDivider"
+              class="absolute top-0 bottom-0 w-0.5 bg-indigo-500 shadow-[0_0_8px_rgba(79,70,229,0.8)] pointer-events-none"
+              style="left: 50%;"
+            >
+              <div class="w-7 h-7 rounded-full bg-indigo-600 text-white border-2 border-white shadow-md flex items-center justify-center -translate-x-1/2 top-1/2 -translate-y-1/2 relative">
+                <i data-lucide="move-horizontal" class="w-3.5 h-3.5"></i>
+              </div>
+            </div>
+
+            <span class="absolute top-2.5 left-2.5 text-[11px] font-medium px-2 py-0.5 rounded-md bg-slate-900/75 text-white pointer-events-none">
+              元画像
+            </span>
+            <span class="absolute top-2.5 right-2.5 text-[11px] font-medium px-2 py-0.5 rounded-md bg-indigo-600/85 text-white pointer-events-none">
+              SVG
+            </span>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <span class="text-xs text-slate-500 dark:text-slate-400 shrink-0">分割位置</span>
+            <input
+              id="compareRange"
+              type="range"
+              min="0"
+              max="100"
+              value="50"
+              class="w-full studio-slider"
+            />
+            <span id="comparePercentLabel" class="text-xs font-mono text-slate-600 dark:text-slate-300 w-10 text-right">50%</span>
+          </div>
+        </div>
+
+        <!-- モード3: SVG拡大表示 -->
+        <div id="svgOnlyView" class="hidden">
+          <div class="checkerboard rounded-xl border border-slate-200 dark:border-slate-800 h-80 sm:h-[26rem] flex items-center justify-center p-4 overflow-auto">
+            <div id="svgLargeContainer" class="w-full h-full flex items-center justify-center"></div>
+          </div>
+        </div>
+
+        <!-- メトリクス＆アクションバー -->
+        <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400 font-mono">
+            <span>パス数: <strong id="pathCountStat" class="text-slate-800 dark:text-slate-200">0</strong></span>
+            <span>SVGサイズ: <strong id="svgBytesStat" class="text-slate-800 dark:text-slate-200">0 B</strong></span>
+            <span>変換時間: <strong id="renderTimeStat" class="text-slate-800 dark:text-slate-200">-</strong></span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button
+              id="copySvgBtn"
+              type="button"
+              disabled
+              class="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs sm:text-sm font-medium transition flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <i data-lucide="copy" id="copyIcon" class="w-4 h-4"></i>
+              <span id="copyBtnText">SVGコードをコピー</span>
+            </button>
+
+            <button
+              id="downloadSvgBtn"
+              type="button"
+              disabled
+              class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs sm:text-sm font-semibold shadow-sm transition flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <i data-lucide="download" class="w-4 h-4"></i>
+              <span>.svg をダウンロード</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SVGソースコードビューアカード -->
+      <div class="bg-white/95 dark:bg-slate-900/90 backdrop-blur-xs rounded-2xl border border-slate-200/90 dark:border-slate-800 p-5 shadow-sm">
+        <div class="flex items-center justify-between gap-2 mb-3">
+          <h2 class="text-sm font-semibold flex items-center gap-2">
+            <i data-lucide="code-2" class="w-4 h-4 text-indigo-500"></i>
+            生成されたSVGコード
+          </h2>
+          <div class="flex items-center gap-2">
+            <button
+              id="toggleWrapBtn"
+              type="button"
+              class="text-xs px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+            >
+              折り返し: ON
+            </button>
+          </div>
+        </div>
+
+        <textarea
+          id="svgCodeTextarea"
+          readonly
+          spellcheck="false"
+          placeholder="ここに生成された <svg> マークアップが表示されます..."
+          class="w-full h-48 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-3.5 font-mono text-xs leading-relaxed text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y whitespace-pre-wrap"
+        ></textarea>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // =========================================================================
+    // 状態管理
+    // =========================================================================
+    const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+
+    const appState = {
+      originalImage: null,       // HTMLImageElement
+      preparedDataUrl: null,     // リサイズ済みの DataURL（ImageTracerへ渡す用）
+      originalFileName: 'traced-image',
+      originalWidth: 0,
+      originalHeight: 0,
+      preparedWidth: 0,
+      preparedHeight: 0,
+      svgString: '',
+      isConverting: false,
+      debounceTimer: null,
+      tourInstance: null,
+      isTourActive: false,
+    };
+
+    // DOM要素参照のキャッシュ
+    const dom = {
+      html: document.documentElement,
+      themeToggleBtn: document.getElementById('themeToggleBtn'),
+      startTourBtn: document.getElementById('startTourBtn'),
+      sunIcon: document.getElementById('sunIcon'),
+      moonIcon: document.getElementById('moonIcon'),
+      statusBanner: document.getElementById('statusBanner'),
+      statusBannerInner: document.getElementById('statusBannerInner'),
+      statusBannerIcon: document.getElementById('statusBannerIcon'),
+      statusBannerText: document.getElementById('statusBannerText'),
+      statusBannerClose: document.getElementById('statusBannerClose'),
+
+      dropZone: document.getElementById('dropZone'),
+      fileInput: document.getElementById('fileInput'),
+      loadSampleBtn: document.getElementById('loadSampleBtn'),
+      sourceMetaBadge: document.getElementById('sourceMetaBadge'),
+      maxDimensionSelect: document.getElementById('maxDimensionSelect'),
+
+      presetSelect: document.getElementById('presetSelect'),
+      colorsRange: document.getElementById('colorsRange'),
+      colorsValue: document.getElementById('colorsValue'),
+      detailRange: document.getElementById('detailRange'),
+      detailValue: document.getElementById('detailValue'),
+      pathomitRange: document.getElementById('pathomitRange'),
+      pathomitValue: document.getElementById('pathomitValue'),
+      roundcoordsRange: document.getElementById('roundcoordsRange'),
+      roundcoordsValue: document.getElementById('roundcoordsValue'),
+      strokewidthRange: document.getElementById('strokewidthRange'),
+      strokewidthValue: document.getElementById('strokewidthValue'),
+      resetParamsBtn: document.getElementById('resetParamsBtn'),
+      autoConvertCheckbox: document.getElementById('autoConvertCheckbox'),
+      convertNowBtn: document.getElementById('convertNowBtn'),
+      convertBtnLabel: document.getElementById('convertBtnLabel'),
+
+      conversionStatusBadge: document.getElementById('conversionStatusBadge'),
+      sideBySideView: document.getElementById('sideBySideView'),
+      sliderCompareView: document.getElementById('sliderCompareView'),
+      svgOnlyView: document.getElementById('svgOnlyView'),
+      originalPreviewImg: document.getElementById('originalPreviewImg'),
+      originalEmptyState: document.getElementById('originalEmptyState'),
+      originalDimsLabel: document.getElementById('originalDimsLabel'),
+      svgPreviewContainer: document.getElementById('svgPreviewContainer'),
+      svgEmptyState: document.getElementById('svgEmptyState'),
+      svgSizeLabel: document.getElementById('svgSizeLabel'),
+
+      compareStage: document.getElementById('compareStage'),
+      compareOriginalLayer: document.getElementById('compareOriginalLayer'),
+      compareOriginalImg: document.getElementById('compareOriginalImg'),
+      compareSvgLayer: document.getElementById('compareSvgLayer'),
+      compareDivider: document.getElementById('compareDivider'),
+      compareRange: document.getElementById('compareRange'),
+      comparePercentLabel: document.getElementById('comparePercentLabel'),
+      svgLargeContainer: document.getElementById('svgLargeContainer'),
+
+      pathCountStat: document.getElementById('pathCountStat'),
+      svgBytesStat: document.getElementById('svgBytesStat'),
+      renderTimeStat: document.getElementById('renderTimeStat'),
+      copySvgBtn: document.getElementById('copySvgBtn'),
+      copyIcon: document.getElementById('copyIcon'),
+      copyBtnText: document.getElementById('copyBtnText'),
+      downloadSvgBtn: document.getElementById('downloadSvgBtn'),
+
+      svgCodeTextarea: document.getElementById('svgCodeTextarea'),
+      toggleWrapBtn: document.getElementById('toggleWrapBtn'),
+    };
+
+    // =========================================================================
+    // ユーティリティ関数
+    // =========================================================================
+    function refreshIcons() {
+      try {
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+          window.lucide.createIcons();
+        }
+      } catch (err) {
+        console.warn('Lucideアイコン描画時の警告:', err);
+      }
+    }
+
+    function showBanner(message, type = 'info') {
+      if (!dom.statusBanner || !dom.statusBannerInner || !dom.statusBannerText) return;
+
+      const styles = {
+        info: 'bg-indigo-50 dark:bg-indigo-950/70 border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-200',
+        success: 'bg-emerald-50 dark:bg-emerald-950/70 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200',
+        error: 'bg-rose-50 dark:bg-rose-950/70 border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200',
+      };
+      const icons = {
+        info: 'info',
+        success: 'check-circle-2',
+        error: 'alert-circle',
+      };
+
+      dom.statusBannerInner.className = `rounded-xl px-4 py-3 text-sm flex items-center justify-between gap-3 border ${styles[type] || styles.info}`;
+      dom.statusBannerText.textContent = message;
+      if (dom.statusBannerIcon) {
+        dom.statusBannerIcon.setAttribute('data-lucide', icons[type] || 'info');
+      }
+      dom.statusBanner.classList.remove('hidden');
+      refreshIcons();
+    }
+
+    function hideBanner() {
+      if (dom.statusBanner) {
+        dom.statusBanner.classList.add('hidden');
+      }
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes || bytes <= 0) return '0 B';
+      const units = ['B', 'KB', 'MB'];
+      const idx = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+      const val = bytes / Math.pow(1024, idx);
+      return `${val >= 10 || idx === 0 ? val.toFixed(0) : val.toFixed(1)} ${units[idx]}`;
+    }
+
+    function sanitizeFileName(name) {
+      return (name || 'traced-image')
+        .replace(/\.[^/.]+$/, '')
+        .replace(/[^\w\-一-龠ぁ-んァ-ヶ]/g, '_')
+        .slice(0, 60) || 'traced-image';
+    }
+
+    // =========================================================================
+    // テーマ管理
+    // =========================================================================
+    function initTheme() {
+      try {
+        const saved = localStorage.getItem('svg_studio_theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const isDark = saved ? saved === 'dark' : prefersDark;
+        applyTheme(isDark);
+      } catch {
+        applyTheme(true);
+      }
+    }
+
+    function applyTheme(isDark) {
+      dom.html.classList.toggle('dark', isDark);
+      if (dom.sunIcon) dom.sunIcon.classList.toggle('hidden', !isDark);
+      if (dom.moonIcon) dom.moonIcon.classList.toggle('hidden', isDark);
+      try {
+        localStorage.setItem('svg_studio_theme', isDark ? 'dark' : 'light');
+      } catch {
+        // ストレージ制限時は無視
+      }
+    }
+
+    // =========================================================================
+    // Driver.js インタラクティブツアー（操作連動＆次ステップ自動進行）
+    // =========================================================================
+
+    function advanceTourIfActive(expectedStepIndex, delayMs = 380) {
+      if (!appState.isTourActive || !appState.tourInstance) return;
+      const activeIdx = appState.tourInstance.getActiveIndex();
+      if (typeof expectedStepIndex === 'number' && activeIdx !== expectedStepIndex) return;
+
+      setTimeout(() => {
+        if (!appState.isTourActive || !appState.tourInstance) return;
+        if (typeof expectedStepIndex === 'number' && appState.tourInstance.getActiveIndex() !== expectedStepIndex) {
+          return;
+        }
+        if (appState.tourInstance.isLastStep()) {
+          appState.tourInstance.destroy();
+        } else {
+          appState.tourInstance.moveNext();
+        }
+      }, delayMs);
+    }
+
+    function createStudioTour() {
+      const driverFactory = window.driver && window.driver.js && window.driver.js.driver;
+      if (typeof driverFactory !== 'function') {
+        showBanner('Driver.js の読み込みに失敗しました。ネットワーク接続を確認してください。', 'error');
+        return null;
+      }
+
+      const tour = driverFactory({
+        showProgress: true,
+        allowClose: true,
+        animate: true,
+        smoothScroll: true,
+        popoverClass: 'svg-studio-tour-popover',
+        nextBtnText: '次へ →',
+        prevBtnText: '← 前へ',
+        doneBtnText: '完了 ✨',
+        progressText: 'STEP {{current}} / {{total}}',
+        onDestroyed: () => {
+          appState.isTourActive = false;
+        },
+        steps: [
+          {
+            element: '#loadSampleBtn',
+            popover: {
+              title: '① まずはサンプル画像を読込もう',
+              description:
+                'ここをクリックすると内蔵サンプル画像が読み込まれ、<strong>自動で次のステップ（画像アップロード枠）へ進み、SVG変換も始まります</strong>！',
+              side: 'bottom',
+              align: 'end',
+            },
+          },
+          {
+            element: '#dropZone',
+            popover: {
+              title: '② 自分のPNG / JPG / WebPをドロップ',
+              description:
+                'お手元の画像をドラッグ＆ドロップまたはクリック選択すると、<strong>リサイズ判定のあと自動でSVG変換が走り、次の設定ステップへ進みます</strong>。',
+              side: 'right',
+              align: 'start',
+            },
+          },
+          {
+            element: '#presetSelect',
+            popover: {
+              title: '③ プリセットで雰囲気を一発変更',
+              description:
+                '「ポスター調」「滑らかな曲線」「白黒2値」などを選ぶと、<strong>即座にSVGが再描画され、次の減色数スライダーへ自動で進みます</strong>。',
+              side: 'right',
+              align: 'start',
+            },
+          },
+          {
+            element: '#colorsRange',
+            popover: {
+              title: '④ 減色数スライダーで色数を調整',
+              description:
+                'スライダーを動かすと、<strong>色数がリアルタイムでSVGに反映され、操作後に次の詳細度ステップへ進みます</strong>。',
+              side: 'right',
+              align: 'start',
+            },
+          },
+          {
+            element: '#detailRange',
+            popover: {
+              title: '⑤ トレース詳細度で輪郭の細かさを制御',
+              description:
+                '右に動かすほど細かい輪郭になり、左にすると軽量なSVGになります。<strong>動かすと自動で次の比較プレビューへ進みます</strong>。',
+              side: 'right',
+              align: 'start',
+            },
+          },
+          {
+            element: '#viewSideBySide',
+            popover: {
+              title: '⑥ 変換前後の結果を比較チェック',
+              description:
+                '左に元画像、右にSVGが表示されます。<strong>「重ねて比較」や「SVG拡大」タブを押すと、切り替わった状態で次の保存ステップへ進みます</strong>。',
+              side: 'left',
+              align: 'start',
+            },
+          },
+          {
+            element: '#downloadSvgBtn',
+            popover: {
+              title: '⑦ SVGコードをコピー or .svg 保存',
+              description:
+                '仕上がったベクターデータは「SVGコードをコピー」ですぐ貼り付け可能、<strong>「.svg をダウンロード」を押すと保存してツアー完了になります</strong>！',
+              side: 'top',
+              align: 'end',
+            },
+          },
+        ],
+      });
+
+      return tour;
+    }
+
+    function startGuidedTour() {
+      const tour = createStudioTour();
+      if (!tour) return;
+
+      if (appState.tourInstance) {
+        try {
+          appState.tourInstance.destroy();
+        } catch (err) {
+          console.warn('既存ツアー破棄時の警告:', err);
+        }
+      }
+
+      appState.tourInstance = tour;
+      appState.isTourActive = true;
+      tour.drive();
+    }
+
+    // =========================================================================
+    // パラメータ同期・プリセット適用
+    // =========================================================================
+    function getDetailLabel(val) {
+      const n = Number(val);
+      if (n <= 2) return 'かなり粗い';
+      if (n <= 4) return 'やや粗い';
+      if (n <= 6) return '標準';
+      if (n <= 8) return 'やや細かい';
+      return '最高精細';
+    }
+
+    function syncSliderLabels() {
+      dom.colorsValue.textContent = dom.colorsRange.value;
+      dom.detailValue.textContent = getDetailLabel(dom.detailRange.value);
+      dom.pathomitValue.textContent = `${dom.pathomitRange.value} px²`;
+      dom.roundcoordsValue.textContent = `${dom.roundcoordsRange.value} 桁`;
+      dom.strokewidthValue.textContent = Number(dom.strokewidthRange.value).toFixed(1);
+    }
+
+    function applyPresetToControls(presetKey) {
+      const presets = {
+        default:      { colors: 16, detail: 5, pathomit: 8,  roundcoords: 1, strokewidth: 0.5 },
+        posterized1:  { colors: 6,  detail: 4, pathomit: 16, roundcoords: 1, strokewidth: 0.0 },
+        posterized2:  { colors: 12, detail: 6, pathomit: 10, roundcoords: 1, strokewidth: 0.5 },
+        curvy:        { colors: 16, detail: 6, pathomit: 8,  roundcoords: 2, strokewidth: 0.5 },
+        sharp:        { colors: 12, detail: 7, pathomit: 6,  roundcoords: 1, strokewidth: 1.0 },
+        bw:           { colors: 2,  detail: 5, pathomit: 8,  roundcoords: 1, strokewidth: 0.0 },
+        detailed:     { colors: 32, detail: 9, pathomit: 2,  roundcoords: 2, strokewidth: 0.5 },
+      };
+
+      const cfg = presets[presetKey] || presets.default;
+      dom.colorsRange.value = cfg.colors;
+      dom.detailRange.value = cfg.detail;
+      dom.pathomitRange.value = cfg.pathomit;
+      dom.roundcoordsRange.value = cfg.roundcoords;
+      dom.strokewidthRange.value = cfg.strokewidth;
+      syncSliderLabels();
+    }
+
+    function buildTracerOptions() {
+      const detail = Number(dom.detailRange.value); // 1..10
+      const errorThreshold = Math.max(0.2, (11 - detail) * 0.45);
+      const preset = dom.presetSelect.value;
+
+      const options = {
+        ltres: errorThreshold,
+        qtres: errorThreshold,
+        pathomit: Number(dom.pathomitRange.value),
+        numberofcolors: Number(dom.colorsRange.value),
+        roundcoords: Number(dom.roundcoordsRange.value),
+        strokewidth: Number(dom.strokewidthRange.value),
+        viewbox: true,
+        desc: false,
+      };
+
+      if (preset === 'bw') {
+        options.pal = [
+          { r: 15, g: 23, b: 42, a: 255 },
+          { r: 255, g: 255, b: 255, a: 255 },
+        ];
+      }
+
+      return options;
+    }
+
+    // =========================================================================
+    // 画像読み込み＆リサイズ準備
+    // =========================================================================
+    function handleImageFile(file) {
+      hideBanner();
+
+      if (!file) return;
+
+      const validTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+      if (!validTypes.includes(file.type)) {
+        showBanner('対応していない画像形式です。PNG、JPG、WebP、GIFを選択してください。', 'error');
+        return;
+      }
+
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        showBanner(`ファイルサイズが大きすぎます（上限10MB / 現在 ${formatBytes(file.size)}）。`, 'error');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          appState.originalImage = img;
+          appState.originalFileName = sanitizeFileName(file.name);
+          appState.originalWidth = img.naturalWidth || img.width;
+          appState.originalHeight = img.naturalHeight || img.height;
+
+          prepareSourceImage();
+          updateOriginalPreview();
+          scheduleConversion(50);
+        };
+        img.onerror = () => {
+          showBanner('画像の読み込みに失敗しました。破損していない画像ファイルをお試しください。', 'error');
+        };
+        img.src = event.target.result;
+      };
+      reader.onerror = () => {
+        showBanner('ファイルの読み込み中にエラーが発生しました。', 'error');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function prepareSourceImage() {
+      const img = appState.originalImage;
+      if (!img) return;
+
+      const maxDim = Number(dom.maxDimensionSelect.value) || 0;
+      let targetW = appState.originalWidth;
+      let targetH = appState.originalHeight;
+
+      if (maxDim > 0 && Math.max(targetW, targetH) > maxDim) {
+        if (targetW >= targetH) {
+          targetH = Math.round((targetH * maxDim) / targetW);
+          targetW = maxDim;
+        } else {
+          targetW = Math.round((targetW * maxDim) / targetH);
+          targetH = maxDim;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = targetW;
+      canvas.height = targetH;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, targetW, targetH);
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+
+      appState.preparedWidth = targetW;
+      appState.preparedHeight = targetH;
+      appState.preparedDataUrl = canvas.toDataURL('image/png');
+
+      dom.sourceMetaBadge.textContent = `${appState.originalFileName} (${appState.originalWidth}×${appState.originalHeight})`;
+      dom.originalDimsLabel.textContent =
+        targetW !== appState.originalWidth
+          ? `${appState.originalWidth}×${appState.originalHeight} → ${targetW}×${targetH}`
+          : `${targetW}×${targetH}`;
+    }
+
+    function updateOriginalPreview() {
+      if (!appState.preparedDataUrl) return;
+
+      dom.originalPreviewImg.src = appState.preparedDataUrl;
+      dom.originalPreviewImg.classList.remove('hidden');
+      dom.originalEmptyState.classList.add('hidden');
+
+      dom.compareOriginalImg.src = appState.preparedDataUrl;
+    }
+
+    // 内蔵サンプル画像（幾何学ロゴ＋グラデーション円）をCanvasで生成
+    function loadSampleImage() {
+      hideBanner();
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 480;
+      canvas.height = 360;
+      const ctx = canvas.getContext('2d');
+
+      // 背景グラデーション
+      const bgGrad = ctx.createLinearGradient(0, 0, 480, 360);
+      bgGrad.addColorStop(0, '#eef2ff');
+      bgGrad.addColorStop(1, '#e0e7ff');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, 480, 360);
+
+      // 大きな円
+      ctx.beginPath();
+      ctx.arc(175, 180, 95, 0, Math.PI * 2);
+      ctx.fillStyle = '#4f46e5';
+      ctx.fill();
+
+      // 重なるアクセント円
+      ctx.beginPath();
+      ctx.arc(275, 180, 75, 0, Math.PI * 2);
+      ctx.fillStyle = '#06b6d4';
+      ctx.fill();
+
+      // 三角形バッジ
+      ctx.beginPath();
+      ctx.moveTo(235, 82);
+      ctx.lineTo(315, 225);
+      ctx.lineTo(155, 225);
+      ctx.closePath();
+      ctx.fillStyle = '#f59e0b';
+      ctx.fill();
+
+      // 中心の白円
+      ctx.beginPath();
+      ctx.arc(235, 178, 28, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+
+      const dataUrl = canvas.toDataURL('image/png');
+      const img = new Image();
+      img.onload = () => {
+        appState.originalImage = img;
+        appState.originalFileName = 'sample-geometric-badge';
+        appState.originalWidth = img.naturalWidth;
+        appState.originalHeight = img.naturalHeight;
+
+        prepareSourceImage();
+        updateOriginalPreview();
+        scheduleConversion(30);
+        showBanner('サンプル画像を読み込み、SVGへ変換しました。', 'info');
+      };
+      img.src = dataUrl;
+    }
+
+    // =========================================================================
+    // ImageTracer.js によるSVG変換処理
+    // =========================================================================
+    function scheduleConversion(delay = 180) {
+      if (!appState.preparedDataUrl) return;
+      if (!dom.autoConvertCheckbox.checked && delay > 60) return;
+
+      clearTimeout(appState.debounceTimer);
+      appState.debounceTimer = setTimeout(() => {
+        convertToSvg();
+      }, delay);
+    }
+
+    function convertToSvg() {
+      if (!appState.preparedDataUrl) {
+        showBanner('先に画像をアップロードするか、「サンプル読込」をお試しください。', 'info');
+        return;
+      }
+
+      if (typeof window.ImageTracer === 'undefined') {
+        showBanner('ImageTracer.js の読み込みに失敗しました。ネットワーク接続を確認してください。', 'error');
+        return;
+      }
+
+      if (appState.isConverting) return;
+      appState.isConverting = true;
+      setConvertingUI(true);
+
+      const startTime = performance.now();
+      const options = buildTracerOptions();
+
+      try {
+        window.ImageTracer.imageToSVG(
+          appState.preparedDataUrl,
+          (svgString) => {
+            const elapsedMs = Math.round(performance.now() - startTime);
+            appState.isConverting = false;
+            setConvertingUI(false);
+
+            if (!svgString || typeof svgString !== 'string' || !svgString.includes('<svg')) {
+              showBanner('SVGの生成結果が空でした。パラメータを変更して再試行してください。', 'error');
+              return;
+            }
+
+            appState.svgString = svgString.trim();
+            renderSvgOutputs(appState.svgString, elapsedMs);
+          },
+          options
+        );
+      } catch (err) {
+        appState.isConverting = false;
+        setConvertingUI(false);
+        console.error('SVG変換エラー:', err);
+        showBanner(`SVG変換中にエラーが発生しました: ${err.message || err}`, 'error');
+      }
+    }
+
+    function setConvertingUI(converting) {
+      dom.convertNowBtn.disabled = converting;
+      dom.convertBtnLabel.textContent = converting ? '変換中...' : 'SVGに変換';
+      if (converting) {
+        dom.conversionStatusBadge.textContent = '変換中...';
+        dom.conversionStatusBadge.className =
+          'text-xs px-2.5 py-0.5 rounded-full font-medium bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 animate-pulse';
+      }
+    }
+
+    function renderSvgOutputs(svgString, elapsedMs) {
+      // プレビュー領域へ安全にSVGを挿入
+      dom.svgPreviewContainer.innerHTML = svgString;
+      dom.compareSvgLayer.innerHTML = svgString;
+      dom.svgLargeContainer.innerHTML = svgString;
+
+      dom.svgEmptyState.classList.add('hidden');
+      dom.svgCodeTextarea.value = svgString;
+
+      // 統計情報算出
+      const byteLength = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' }).size;
+      const pathMatches = svgString.match(/<path\b/gi);
+      const pathCount = pathMatches ? pathMatches.length : 0;
+
+      dom.pathCountStat.textContent = pathCount.toLocaleString();
+      dom.svgBytesStat.textContent = formatBytes(byteLength);
+      dom.svgSizeLabel.textContent = `${formatBytes(byteLength)} (${pathCount} paths)`;
+      dom.renderTimeStat.textContent = `${elapsedMs} ms`;
+
+      dom.conversionStatusBadge.textContent = '変換完了';
+      dom.conversionStatusBadge.className =
+        'text-xs px-2.5 py-0.5 rounded-full font-medium bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300';
+
+      dom.copySvgBtn.disabled = false;
+      dom.downloadSvgBtn.disabled = false;
+    }
+
+    // =========================================================================
+    // プレビュー表示モード＆重ねて比較スライダー
+    // =========================================================================
+    function setViewMode(mode) {
+      const buttons = document.querySelectorAll('.view-mode-btn');
+      buttons.forEach((btn) => {
+        const active = btn.dataset.viewMode === mode;
+        btn.classList.toggle('bg-white', active);
+        btn.classList.toggle('dark:bg-slate-900', active);
+        btn.classList.toggle('text-slate-900', active);
+        btn.classList.toggle('dark:text-white', active);
+        btn.classList.toggle('shadow-2xs', active);
+        btn.classList.toggle('text-slate-600', !active);
+        btn.classList.toggle('dark:text-slate-400', !active);
+      });
+
+      dom.sideBySideView.classList.toggle('hidden', mode !== 'side-by-side');
+      dom.sliderCompareView.classList.toggle('hidden', mode !== 'slider');
+      dom.svgOnlyView.classList.toggle('hidden', mode !== 'svg-only');
+    }
+
+    function updateCompareSplit(percent) {
+      const clamped = Math.max(0, Math.min(100, Number(percent)));
+      dom.compareRange.value = clamped;
+      dom.comparePercentLabel.textContent = `${clamped}%`;
+      const rightInset = 100 - clamped;
+      dom.compareOriginalLayer.style.clipPath = `inset(0 ${rightInset}% 0 0)`;
+      dom.compareDivider.style.left = `${clamped}%`;
+    }
+
+    // =========================================================================
+    // コピー＆ダウンロード＆コード折り返し
+    // =========================================================================
+    function copySvgCode() {
+      if (!appState.svgString) return;
+
+      dom.svgCodeTextarea.select();
+      dom.svgCodeTextarea.setSelectionRange(0, dom.svgCodeTextarea.value.length);
+
+      let copied = false;
+      try {
+        copied = document.execCommand('copy');
+      } catch {
+        copied = false;
+      }
+
+      if (copied) {
+        dom.copyBtnText.textContent = 'コピーしました';
+        if (dom.copyIcon) dom.copyIcon.setAttribute('data-lucide', 'check');
+        refreshIcons();
+        showBanner('SVGコードをクリップボードにコピーしました。', 'success');
+
+        setTimeout(() => {
+          dom.copyBtnText.textContent = 'SVGコードをコピー';
+          if (dom.copyIcon) dom.copyIcon.setAttribute('data-lucide', 'copy');
+          refreshIcons();
+        }, 1800);
+      } else {
+        showBanner('コピーに失敗しました。テキストエリアから手動でコピーしてください。', 'error');
+      }
+    }
+
+    function downloadSvgFile() {
+      if (!appState.svgString) return;
+
+      const blob = new Blob([appState.svgString], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${appState.originalFileName}.svg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showBanner(`${appState.originalFileName}.svg をダウンロードしました。`, 'success');
+    }
+
+    function toggleCodeWrap() {
+      const isWrapped = dom.svgCodeTextarea.classList.toggle('whitespace-pre-wrap');
+      dom.svgCodeTextarea.classList.toggle('whitespace-pre', !isWrapped);
+      dom.toggleWrapBtn.textContent = `折り返し: ${isWrapped ? 'ON' : 'OFF'}`;
+    }
+
+    // =========================================================================
+    // イベントリスナー登録
+    // =========================================================================
+    function bindEvents() {
+      const on = (el, eventName, handler, options) => {
+        if (el && typeof el.addEventListener === 'function') {
+          el.addEventListener(eventName, handler, options);
+        } else {
+          console.warn(`イベント登録スキップ: 対象要素が見つかりません (${eventName})`);
+        }
+      };
+
+      // テーマ切替
+      on(dom.themeToggleBtn, 'click', () => {
+        const nextDark = !dom.html.classList.contains('dark');
+        applyTheme(nextDark);
+      });
+
+      // バナー閉じる
+      on(dom.statusBannerClose, 'click', hideBanner);
+
+      // Driver.js ガイドツアー起動
+      on(dom.startTourBtn, 'click', startGuidedTour);
+
+      // ドロップゾーンクリック＆キーボード操作
+      on(dom.dropZone, 'click', () => {
+        if (dom.fileInput) dom.fileInput.click();
+      });
+      on(dom.dropZone, 'keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          if (dom.fileInput) dom.fileInput.click();
+        }
+      });
+
+      // ファイル選択
+      on(dom.fileInput, 'change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (file) {
+          handleImageFile(file);
+          advanceTourIfActive(1, 550);
+        }
+        e.target.value = '';
+      });
+
+      // ドラッグ＆ドロップ
+      ['dragenter', 'dragover'].forEach((evtName) => {
+        on(dom.dropZone, evtName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dom.dropZone.classList.add('border-indigo-500', 'bg-indigo-50/60', 'dark:bg-indigo-950/30');
+        });
+      });
+
+      ['dragleave', 'dragend', 'drop'].forEach((evtName) => {
+        on(dom.dropZone, evtName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dom.dropZone.classList.remove('border-indigo-500', 'bg-indigo-50/60', 'dark:bg-indigo-950/30');
+        });
+      });
+
+      on(dom.dropZone, 'drop', (e) => {
+        const dt = e.dataTransfer;
+        const file = dt && dt.files && dt.files[0];
+        if (file) {
+          handleImageFile(file);
+          advanceTourIfActive(1, 550);
+        }
+      });
+
+      // 最大サイズ変更時は元画像を再準備
+      on(dom.maxDimensionSelect, 'change', () => {
+        if (!appState.originalImage) return;
+        prepareSourceImage();
+        updateOriginalPreview();
+        scheduleConversion(60);
+      });
+
+      // プリセット変更
+      on(dom.presetSelect, 'change', () => {
+        applyPresetToControls(dom.presetSelect.value);
+        scheduleConversion(60);
+        if (appState.isTourActive && appState.tourInstance && appState.tourInstance.getActiveIndex() === 2) {
+          advanceTourIfActive(2, 450);
+        }
+      });
+
+      // 各種スライダー変更
+      const paramControls = [
+        dom.colorsRange,
+        dom.detailRange,
+        dom.pathomitRange,
+        dom.roundcoordsRange,
+        dom.strokewidthRange,
+      ];
+
+      paramControls.forEach((ctrl) => {
+        on(ctrl, 'input', () => {
+          syncSliderLabels();
+          scheduleConversion();
+        });
+        on(ctrl, 'change', () => {
+          syncSliderLabels();
+          scheduleConversion();
+
+          if (!appState.isTourActive || !appState.tourInstance) return;
+          const activeIdx = appState.tourInstance.getActiveIndex();
+          if (ctrl === dom.colorsRange && activeIdx === 3) {
+            advanceTourIfActive(3, 500);
+          } else if (ctrl === dom.detailRange && activeIdx === 4) {
+            advanceTourIfActive(4, 500);
+          }
+        });
+      });
+
+      // パラメータリセット
+      on(dom.resetParamsBtn, 'click', () => {
+        dom.presetSelect.value = 'default';
+        applyPresetToControls('default');
+        scheduleConversion(60);
+      });
+
+      // 手動変換ボタン
+      on(dom.convertNowBtn, 'click', () => {
+        clearTimeout(appState.debounceTimer);
+        convertToSvg();
+      });
+
+      // サンプル画像読込（ツアー中なら次のステップへ自動進行）
+      on(dom.loadSampleBtn, 'click', () => {
+        loadSampleImage();
+        advanceTourIfActive(0, 500);
+      });
+
+      // 表示モード切替ボタン（ツアー中STEP 5で押したらSTEP 6へ進行）
+      document.querySelectorAll('.view-mode-btn').forEach((btn) => {
+        on(btn, 'click', () => {
+          setViewMode(btn.dataset.viewMode);
+          if (appState.isTourActive && appState.tourInstance && appState.tourInstance.getActiveIndex() === 5) {
+            advanceTourIfActive(5, 420);
+          }
+        });
+      });
+
+      // 重ねて比較スライダー＆ステージドラッグ/タッチ
+      on(dom.compareRange, 'input', (e) => {
+        updateCompareSplit(e.target.value);
+      });
+
+      let isDraggingCompare = false;
+      const updateSplitFromClientX = (clientX) => {
+        const rect = dom.compareStage.getBoundingClientRect();
+        if (!rect.width) return;
+        const pct = Math.round(((clientX - rect.left) / rect.width) * 100);
+        updateCompareSplit(pct);
+      };
+
+      on(dom.compareStage, 'pointerdown', (e) => {
+        isDraggingCompare = true;
+        dom.compareStage.setPointerCapture(e.pointerId);
+        updateSplitFromClientX(e.clientX);
+      });
+
+      on(dom.compareStage, 'pointermove', (e) => {
+        if (!isDraggingCompare) return;
+        updateSplitFromClientX(e.clientX);
+      });
+
+      const stopDraggingCompare = () => {
+        isDraggingCompare = false;
+      };
+      on(dom.compareStage, 'pointerup', stopDraggingCompare);
+      on(dom.compareStage, 'pointercancel', stopDraggingCompare);
+
+      // コピー＆ダウンロード（ツアー最終ステップでダウンロードしたら完了）
+      on(dom.copySvgBtn, 'click', copySvgCode);
+      on(dom.downloadSvgBtn, 'click', () => {
+        downloadSvgFile();
+        if (appState.isTourActive && appState.tourInstance && appState.tourInstance.getActiveIndex() === 6) {
+          advanceTourIfActive(6, 450);
+        }
+      });
+
+      // コード折り返し切替
+      on(dom.toggleWrapBtn, 'click', toggleCodeWrap);
+    }
+
+    // =========================================================================
+    // 初期化
+    // =========================================================================
+    function initializeApp() {
+      initTheme();
+      syncSliderLabels();
+      updateCompareSplit(50);
+      bindEvents();
+      refreshIcons();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeApp);
+    } else {
+      initializeApp();
+    }
+  </script>
+</body>
+</html>
